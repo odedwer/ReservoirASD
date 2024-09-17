@@ -78,6 +78,12 @@ class Reservoir:
         self.states = None
 
     def run_network(self, X, n_steps=15):
+        """
+
+        :param X: the input. Can either be of shape (n_examples, input_dim) or (n_steps, input_dim, n_examples)
+        :param n_steps:
+        :return:
+        """
         if len(X.shape) == 2:
             to_add = np.zeros_like(X)
 
@@ -85,12 +91,12 @@ class Reservoir:
         else:
             n_steps = X.shape[0]
         n_examples = X.shape[1]
-        self.states = np.zeros((n_steps, n_examples, self.reservoir_size), dtype=np.float64)
+        self.states = np.zeros((n_steps, self.reservoir_size, n_examples), dtype=np.float64)
         for i in tqdm(range(1, n_steps), desc='Running Reservoir'):
-            u = X[i]
+            u = X[i].T
             self.states[i] = ((1 - self.leak_rate) * self.states[i - 1] +
                               self.leak_rate * self.activation(
-                        self.W.dot(self.states[i - 1]) + self.W_in.dot(u) + self.W_bias))
+                        self.W.dot(self.states[i - 1]) + self.W_in.dot(u) + self.W_bias[:, None]))
         return self.states
 
     def spectral_radius(self):
