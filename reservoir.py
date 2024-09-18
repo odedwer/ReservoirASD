@@ -2,9 +2,9 @@ import functools
 
 import numpy as np
 import matplotlib.pyplot as plt
+from sklearn.linear_model import Ridge
 from tqdm import tqdm
 from sklearn.model_selection import train_test_split
-from sklearn.linear_model import Ridge
 from sklearn.metrics import r2_score, mean_squared_error
 
 
@@ -77,7 +77,7 @@ class Reservoir:
         self.W_bias = np.random.normal(0, self.bias_scaling, (self.reservoir_size,))
         self.states = None
 
-    def run_network(self, X, n_steps=15):
+    def run_network(self, X, n_steps=15, fill_zeros=False):
         """
 
         :param X: the input. Can either be of shape (n_examples, input_dim) or (n_steps, input_dim, n_examples)
@@ -85,18 +85,22 @@ class Reservoir:
         :return:
         """
         if len(X.shape) == 2:
-            to_add = np.zeros_like(X)
-
-            X = X[None, :, :]
+            if fill_zeros:
+                to_add = np.zeros_like(X)
+                to_add = np.repeat(to_add[None, :, :], n_steps, axis=0)
+                to_add[0, ...] = X
+                X = to_add
+            else:
+                X = np.repeat(X[None, :, :], n_steps, axis=0)
         else:
             n_steps = X.shape[0]
         n_examples = X.shape[1]
-        self.states = np.zeros((n_steps, self.reservoir_size, n_examples), dtype=np.float64)
-        for i in tqdm(range(1, n_steps), desc='Running Reservoir'):
+        self.states = np.zeros((n_steps + 1, self.reservoir_size, n_examples), dtype=np.float64)
+        for i in tqdm(range(0, n_steps), desc='Running Reservoir'):
             u = X[i].T
-            self.states[i] = ((1 - self.leak_rate) * self.states[i - 1] +
-                              self.leak_rate * self.activation(
-                        self.W.dot(self.states[i - 1]) + self.W_in.dot(u) + self.W_bias[:, None]))
+            self.states[i + 1] = ((1 - self.leak_rate) * self.states[i] +
+                                  self.leak_rate * self.activation(
+                        self.W.dot(self.states[i]) + self.W_in.dot(u) + self.W_bias[:, None]))
         return self.states
 
     def spectral_radius(self):
