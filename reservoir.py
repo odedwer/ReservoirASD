@@ -96,7 +96,7 @@ class Reservoir:
             n_steps = X.shape[0]
         n_examples = X.shape[1]
         self.states = np.zeros((n_steps + 1, self.reservoir_size, n_examples), dtype=np.float64)
-        for i in tqdm(range(0, n_steps), desc='Running Reservoir'):
+        for i in range(0, n_steps):
             u = X[i].T
             self.states[i + 1] = ((1 - self.leak_rate) * self.states[i] +
                                   self.leak_rate * self.activation(

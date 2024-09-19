@@ -38,3 +38,6 @@ def generate_data(n_samples=1000, input_dim=2, mean=2, var=1, seed=None):
     y = np.hstack((np.zeros(n_samples), np.ones(n_samples)))
 
     return X, y
+
+def pair_distances(x):
+    return np.sqrt(np.mean((x[::2] - x[1::2]) ** 2, axis=-1))

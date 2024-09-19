@@ -1,5 +1,5 @@
 from tqdm import tqdm
-from utils import FiguresPDF, generate_data
+from utils import FiguresPDF, generate_data, pair_distances
 from reservoir import Activations, Reservoir, np, train_test_split, plt
 from sklearn.metrics import accuracy_score, r2_score, pairwise_distances
 from sklearn.linear_model import Ridge, LogisticRegression
@@ -132,41 +132,49 @@ def check_input_output(zero=False, normalize_network=False, normalize_dist=False
     input_dim = 1
     reservoir_size = 50
     activation = Activations.tanh
+    n_steps=15
     # Generate data
     # X, y = generate_data(n_samples=1000, input_dim=input_dim, mean=mean, var=var, seed=42)
-    X = np.random.randn(100, input_dim)
     reservoir = Reservoir(input_dim, reservoir_size, activation=activation, seed=42)
     reservoir_high_bias = Reservoir(input_dim, reservoir_size, activation=activation, bias_scaling=5, seed=42)
-    states_train = reservoir.run_network(X, fill_zeros=zero, normalize=normalize_network).copy()
-    high_bias_states_train = reservoir_high_bias.run_network(X, fill_zeros=zero, normalize=normalize_network).copy()
+    input_distances = []
+    output_distances = [[] for _ in range(n_steps)]
+    output_distances_high_bias = [[] for _ in range(n_steps)]
+    np.random.seed(97)
+    for seed in np.random.randint(0, 1000, 50):
+        X = np.random.randn(500, input_dim)
+        reservoir.reinitialize(seed)
+        reservoir_high_bias.reinitialize(seed)
+        states_train = reservoir.run_network(X, fill_zeros=zero, normalize=normalize_network).copy()
+        high_bias_states_train = reservoir_high_bias.run_network(X, fill_zeros=zero, normalize=normalize_network).copy()
 
-    # Check the distances in the input space and output space
-    input_distances = pairwise_distances(X)
-    lower_triangular_indices = np.tril_indices(input_distances.shape[0], k=-1)
-    input_distances = input_distances[lower_triangular_indices]
-    if normalize_dist:
-        input_distances /= input_distances.max()
-
+        # Check the distances in the input space and output space
+        inp_dist = pair_distances(X)
+        if normalize_dist:
+            inp_dist /= inp_dist.max()
+        input_distances.append(inp_dist)
+        for i in range(0, n_steps):
+            out_dist = pair_distances(states_train[i+1].T)
+            high_bias_out_dist = pair_distances(high_bias_states_train[i+1].T)
+            if normalize_dist:
+                out_dist /= out_dist.max()
+                high_bias_out_dist /= high_bias_out_dist.max()
+            output_distances[i].append(out_dist)
+            output_distances_high_bias[i].append(high_bias_out_dist)
+    input_distances = np.concatenate(input_distances)
+    output_distances = [np.concatenate(dist) for dist in output_distances]
+    output_distances_high_bias = [np.concatenate(dist) for dist in output_distances_high_bias]
     name = "in-out distance, zero={}, normalize_network={}, normalize_dist={}.pdf".format(zero, normalize_network,
                                                                                           normalize_dist)
     with FiguresPDF(name) as pdf:
-        for i in tqdm(range(1, states_train.shape[0]), desc="Timepoints"):
-            output_distances = pairwise_distances(states_train[i].T)
-            output_distances_high_bias = pairwise_distances(high_bias_states_train[i].T)
-            # get lower triangular indices
-
-            output_distances = output_distances[lower_triangular_indices]
-            output_distances_high_bias = output_distances_high_bias[lower_triangular_indices]
-            if normalize_dist:
-                output_distances /= output_distances.max()
-                output_distances_high_bias /= output_distances_high_bias.max()
+        for i in tqdm(range(0, n_steps), desc="Timepoints"):
             # Plot the distances
-            plt.figure(figsize=(10, 8))
-            plt.scatter(input_distances, output_distances, s=1, alpha=0.5, label="Regular")
-            plt.scatter(input_distances, output_distances_high_bias, s=1, alpha=0.5, label="High bias")
-            max_lim = max(max(input_distances), max(output_distances), max(output_distances_high_bias))
-            plt.xlim(0, max_lim)
-            plt.ylim(0, max_lim)
+            plt.figure()
+            plt.scatter(input_distances, output_distances[i], s=1, alpha=0.5, label="Regular")
+            plt.scatter(input_distances, output_distances_high_bias[i], s=1, alpha=0.5, label="High bias")
+            # max_lim = max(np.max(input_distances), np.max(output_distances[i]), np.max(output_distances_high_bias[i]))
+            # plt.xlim(0, max_lim)
+            # plt.ylim(0, max_lim)
             plt.legend()
             plt.xlabel('Input Space Distances')
             plt.ylabel('Output Space Distances')
