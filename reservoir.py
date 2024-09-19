@@ -77,7 +77,7 @@ class Reservoir:
         self.W_bias = np.random.normal(0, self.bias_scaling, (self.reservoir_size,))
         self.states = None
 
-    def run_network(self, X, n_steps=15, fill_zeros=False):
+    def run_network(self, X, n_steps=15, fill_zeros=False, normalize=False):
         """
 
         :param X: the input. Can either be of shape (n_examples, input_dim) or (n_steps, input_dim, n_examples)
@@ -101,6 +101,8 @@ class Reservoir:
             self.states[i + 1] = ((1 - self.leak_rate) * self.states[i] +
                                   self.leak_rate * self.activation(
                         self.W.dot(self.states[i]) + self.W_in.dot(u) + self.W_bias[:, None]))
+            if normalize:
+                self.states[i + 1] /= np.linalg.norm(self.states[i + 1], axis=0)
         return self.states
 
     def spectral_radius(self):

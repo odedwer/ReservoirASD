@@ -154,90 +154,60 @@ def simulate_categorization():
             plt.close(fig)
 
 
-def check_input_output():
+def check_input_output(zero=False, normalize_network=False, normalize_dist=False):
     input_dim = 1
     reservoir_size = 50
     activation = Activations.tanh
-    mean = 2
-    var = 2
-
     # Generate data
     # X, y = generate_data(n_samples=1000, input_dim=input_dim, mean=mean, var=var, seed=42)
-    X = np.random.randn(250, input_dim)
+    X = np.random.randn(100, input_dim)
     reservoir = Reservoir(input_dim, reservoir_size, activation=activation, seed=42)
     reservoir_high_bias = Reservoir(input_dim, reservoir_size, activation=activation, bias_scaling=5, seed=42)
-    states_train = reservoir.run_network(X).copy()
-    high_bias_states_train = reservoir_high_bias.run_network(X).copy()
+    states_train = reservoir.run_network(X, fill_zeros=zero, normalize=normalize_network).copy()
+    high_bias_states_train = reservoir_high_bias.run_network(X, fill_zeros=zero, normalize=normalize_network).copy()
 
     # Check the distances in the input space and output space
     input_distances = pairwise_distances(X)
     lower_triangular_indices = np.tril_indices(input_distances.shape[0], k=-1)
     input_distances = input_distances[lower_triangular_indices]
-    with FiguresPDF("input_output_distances.pdf") as pdf:
-        for i in tqdm(range(1, states_train.shape[0]),desc="Timepoints"):
+    if normalize_dist:
+        input_distances /= input_distances.max()
+
+    name = "in-out distance, zero={}, normalize_network={}, normalize_dist={}.pdf".format(zero, normalize_network,
+                                                                                          normalize_dist)
+    with FiguresPDF(name) as pdf:
+        for i in tqdm(range(1, states_train.shape[0]), desc="Timepoints"):
             output_distances = pairwise_distances(states_train[i].T)
             output_distances_high_bias = pairwise_distances(high_bias_states_train[i].T)
             # get lower triangular indices
 
             output_distances = output_distances[lower_triangular_indices]
             output_distances_high_bias = output_distances_high_bias[lower_triangular_indices]
+            if normalize_dist:
+                output_distances /= output_distances.max()
+                output_distances_high_bias /= output_distances_high_bias.max()
             # Plot the distances
             plt.figure(figsize=(10, 8))
-            plt.scatter(input_distances, output_distances,s=1, alpha=0.5,label="Regular")
-            plt.scatter(input_distances, output_distances_high_bias,s=1, alpha=0.5,label="High bias")
+            plt.scatter(input_distances, output_distances, s=1, alpha=0.5, label="Regular")
+            plt.scatter(input_distances, output_distances_high_bias, s=1, alpha=0.5, label="High bias")
             max_lim = max(max(input_distances), max(output_distances), max(output_distances_high_bias))
             plt.xlim(0, max_lim)
             plt.ylim(0, max_lim)
             plt.legend()
             plt.xlabel('Input Space Distances')
             plt.ylabel('Output Space Distances')
-            plt.title('Input vs Output Space Distances at timepoint {}'.format(i+1))
+            plt.title('Input vs Output Space Distances at timepoint {}'.format(i))
             fig = plt.gcf()
             pdf.add_figure(fig)
             plt.close(fig)
 
-def check_input_output_zero():
-    input_dim = 1
-    reservoir_size = 50
-    activation = Activations.tanh
-    mean = 2
-    var = 2
-
-    # Generate data
-    # X, y = generate_data(n_samples=1000, input_dim=input_dim, mean=mean, var=var, seed=42)
-    X = np.random.randn(250, input_dim)
-    reservoir = Reservoir(input_dim, reservoir_size, activation=activation, seed=42)
-    reservoir_high_bias = Reservoir(input_dim, reservoir_size, activation=activation, bias_scaling=5, seed=42)
-    states_train = reservoir.run_network(X,fill_zeros=True).copy()
-    high_bias_states_train = reservoir_high_bias.run_network(X,fill_zeros=True).copy()
-
-    # Check the distances in the input space and output space
-    input_distances = pairwise_distances(X)
-    lower_triangular_indices = np.tril_indices(input_distances.shape[0], k=-1)
-    input_distances = input_distances[lower_triangular_indices]
-    with FiguresPDF("input_output_distances_zero.pdf") as pdf:
-        for i in tqdm(range(1, states_train.shape[0]),desc="Timepoints"):
-            output_distances = pairwise_distances(states_train[i].T)
-            output_distances_high_bias = pairwise_distances(high_bias_states_train[i].T)
-            # get lower triangular indices
-
-            output_distances = output_distances[lower_triangular_indices]
-            output_distances_high_bias = output_distances_high_bias[lower_triangular_indices]
-            # Plot the distances
-            plt.figure(figsize=(10, 8))
-            plt.scatter(input_distances, output_distances,s=1, alpha=0.5,label="Regular")
-            plt.scatter(input_distances, output_distances_high_bias,s=1, alpha=0.5,label="High bias")
-            max_lim = max(max(input_distances), max(output_distances), max(output_distances_high_bias))
-            plt.xlim(0, max_lim)
-            plt.ylim(0, max_lim)
-            plt.legend()
-            plt.xlabel('Input Space Distances')
-            plt.ylabel('Output Space Distances')
-            plt.title('Input vs Output Space Distances at timepoint {}'.format(i+1))
-            fig = plt.gcf()
-            pdf.add_figure(fig)
-            plt.close(fig)
 
 
 if __name__ == '__main__':
-    check_input_output()
+    zero_time = [False, True]
+    normalize_network = [False, True]
+    normalize_dist = [False, True]
+    for zero in zero_time:
+        for norm_net in normalize_network:
+            for norm_dist in normalize_dist:
+                check_input_output(zero, norm_net, norm_dist)
