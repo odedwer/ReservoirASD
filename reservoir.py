@@ -1,6 +1,6 @@
 import functools
 
-import numpy as np
+import cupy as np
 import matplotlib.pyplot as plt
 from sklearn.linear_model import Ridge
 from tqdm import tqdm
@@ -54,13 +54,14 @@ class Activations:
 
 class Reservoir:
     def __init__(self, input_dim, reservoir_size, leak_rate=0.5, input_scaling=1, bias_scaling=1,
-                 connection_scaling=1, activation=Activations.tanh, seed=None):
+                 connection_scaling=1, activation=Activations.tanh, spectral_radius=1.25, seed=None):
         self.input_dim = input_dim
         self.reservoir_size = reservoir_size
         self.leak_rate = leak_rate
         self.input_scaling = input_scaling
         self.bias_scaling = bias_scaling
         self.connection_scaling = connection_scaling
+        self.spectral_radius = spectral_radius
         self.activation = activation
         self.states = None
         self.W_in = None
@@ -74,6 +75,7 @@ class Reservoir:
             np.random.seed(seed)
         self.W_in = np.random.normal(0, self.input_scaling, (self.reservoir_size, self.input_dim))
         self.W = np.random.normal(0, self.connection_scaling, (self.reservoir_size, self.reservoir_size))
+        self.W *= self.spectral_radius / max(abs(np.linalg.eigvalsh(self.W)))
         self.W_bias = np.random.normal(0, self.bias_scaling, (self.reservoir_size,))
         self.states = None
 

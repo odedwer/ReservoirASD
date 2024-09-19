@@ -1,10 +1,10 @@
 from tqdm import tqdm
 from utils import FiguresPDF, generate_data, pair_distances
-from reservoir import Activations, Reservoir, np, train_test_split, plt
+from reservoir import Activations, Reservoir, train_test_split, plt
+from reservoir import np as cp
+import numpy as np
 from sklearn.metrics import accuracy_score, r2_score, pairwise_distances
 from sklearn.linear_model import Ridge, LogisticRegression
-
-
 
 
 def get_2d_grid_reservoir_states(X, reservoir, step=0.1):
@@ -129,49 +129,64 @@ def simulate_categorization():
 
 
 def check_input_output(zero=False, normalize_network=False, normalize_dist=False):
-    input_dim = 1
-    reservoir_size = 50
+    input_dim = 2
+    reservoir_size = 200
     activation = Activations.tanh
-    n_steps=15
+    n_steps = 100
+    spectral_radius = 1.1
     # Generate data
     # X, y = generate_data(n_samples=1000, input_dim=input_dim, mean=mean, var=var, seed=42)
-    reservoir = Reservoir(input_dim, reservoir_size, activation=activation, seed=42)
-    reservoir_high_bias = Reservoir(input_dim, reservoir_size, activation=activation, bias_scaling=5, seed=42)
+    reservoir = Reservoir(input_dim, reservoir_size, activation=activation, spectral_radius=spectral_radius, seed=42)
+    reservoir_high_bias = Reservoir(input_dim, reservoir_size, activation=activation, spectral_radius=spectral_radius,
+                                    bias_scaling=5, seed=42)
+    reservoir_no_bias = Reservoir(input_dim, reservoir_size, activation=activation, spectral_radius=spectral_radius,
+                                  bias_scaling=0, seed=42)
     input_distances = []
-    output_distances = [[] for _ in range(n_steps)]
-    output_distances_high_bias = [[] for _ in range(n_steps)]
-    np.random.seed(97)
-    for seed in np.random.randint(0, 1000, 50):
-        X = np.random.randn(500, input_dim)
-        reservoir.reinitialize(seed)
-        reservoir_high_bias.reinitialize(seed)
-        states_train = reservoir.run_network(X, fill_zeros=zero, normalize=normalize_network).copy()
-        high_bias_states_train = reservoir_high_bias.run_network(X, fill_zeros=zero, normalize=normalize_network).copy()
+    output_distances = [[] for _ in range(0, n_steps, 10)]
+    output_distances_high_bias = [[] for _ in range(0, n_steps, 10)]
+    output_distances_no_bias = [[] for _ in range(0, n_steps, 10)]
+    cp.random.seed(97)
+    for seed in tqdm(cp.random.randint(0, 1000, 50), desc="Seeds"):
+        X = cp.random.randn(500, input_dim)
+        reservoir.reinitialize(seed.get())
+        reservoir_high_bias.reinitialize(seed.get())
+        reservoir_no_bias.reinitialize(seed.get())
+        states_train = reservoir.run_network(X, fill_zeros=zero, normalize=normalize_network, n_steps=n_steps).copy()
+        high_bias_states_train = reservoir_high_bias.run_network(X, fill_zeros=zero, normalize=normalize_network,
+                                                                 n_steps=n_steps).copy()
+        no_bias_states_train = reservoir_no_bias.run_network(X, fill_zeros=zero, normalize=normalize_network,
+                                                             n_steps=n_steps).copy()
 
         # Check the distances in the input space and output space
         inp_dist = pair_distances(X)
         if normalize_dist:
             inp_dist /= inp_dist.max()
         input_distances.append(inp_dist)
-        for i in range(0, n_steps):
-            out_dist = pair_distances(states_train[i+1].T)
-            high_bias_out_dist = pair_distances(high_bias_states_train[i+1].T)
+        for j, i in enumerate(range(0, n_steps, 10)):
+            out_dist = pair_distances(states_train[i + 1].T)
+            high_bias_out_dist = pair_distances(high_bias_states_train[i + 1].T)
+            no_bias_out_dist = pair_distances(no_bias_states_train[i + 1].T)
             if normalize_dist:
                 out_dist /= out_dist.max()
                 high_bias_out_dist /= high_bias_out_dist.max()
-            output_distances[i].append(out_dist)
-            output_distances_high_bias[i].append(high_bias_out_dist)
-    input_distances = np.concatenate(input_distances)
-    output_distances = [np.concatenate(dist) for dist in output_distances]
-    output_distances_high_bias = [np.concatenate(dist) for dist in output_distances_high_bias]
+                no_bias_out_dist /= no_bias_out_dist.max()
+            output_distances[j].append(out_dist)
+            output_distances_high_bias[j].append(high_bias_out_dist)
+            output_distances_no_bias[j].append(no_bias_out_dist)
+    input_distances = cp.asnumpy(cp.concatenate(input_distances))
+    output_distances = [cp.asnumpy(cp.concatenate(dist)) for dist in output_distances]
+    output_distances_high_bias = [cp.asnumpy(cp.concatenate(dist)) for dist in output_distances_high_bias]
+    output_distances_no_bias = [cp.asnumpy(cp.concatenate(dist)) for dist in output_distances_no_bias]
     name = "in-out distance, zero={}, normalize_network={}, normalize_dist={}.pdf".format(zero, normalize_network,
                                                                                           normalize_dist)
+
     with FiguresPDF(name) as pdf:
-        for i in tqdm(range(0, n_steps), desc="Timepoints"):
+        for j, i in enumerate(tqdm(range(0, n_steps, 10), desc="Timepoints")):
             # Plot the distances
             plt.figure()
-            plt.scatter(input_distances, output_distances[i], s=1, alpha=0.5, label="Regular")
-            plt.scatter(input_distances, output_distances_high_bias[i], s=1, alpha=0.5, label="High bias")
+            plt.scatter(input_distances, output_distances[j], s=1, alpha=0.5, label="Regular")
+            plt.scatter(input_distances, output_distances_high_bias[j], s=1, alpha=0.5, label="High bias")
+            plt.scatter(input_distances, output_distances_no_bias[j], s=1, alpha=0.5, label="No bias")
             # max_lim = max(np.max(input_distances), np.max(output_distances[i]), np.max(output_distances_high_bias[i]))
             # plt.xlim(0, max_lim)
             # plt.ylim(0, max_lim)
@@ -182,7 +197,6 @@ def check_input_output(zero=False, normalize_network=False, normalize_dist=False
             fig = plt.gcf()
             pdf.add_figure(fig)
             plt.close(fig)
-
 
 
 if __name__ == '__main__':
