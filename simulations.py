@@ -1,24 +1,10 @@
 from tqdm import tqdm
-from utils import FiguresPDF
+from utils import FiguresPDF, generate_data
 from reservoir import Activations, Reservoir, np, train_test_split, plt
 from sklearn.metrics import accuracy_score, r2_score, pairwise_distances
 from sklearn.linear_model import Ridge, LogisticRegression
 
 
-def generate_data(n_samples=1000, input_dim=2, mean=2, var=1, seed=None):
-    if seed:
-        np.random.seed(seed)
-    mean1 = [-mean for _ in range(input_dim)]
-    mean2 = [mean for _ in range(input_dim)]
-    cov = np.eye(input_dim) * var
-
-    class1 = np.random.multivariate_normal(mean1, cov, n_samples)
-    class2 = np.random.multivariate_normal(mean2, cov, n_samples)
-
-    X = np.vstack((class1, class2))
-    y = np.hstack((np.zeros(n_samples), np.ones(n_samples)))
-
-    return X, y
 
 
 def get_2d_grid_reservoir_states(X, reservoir, step=0.1):
@@ -117,19 +103,7 @@ def simulate_categorization():
         high_bias_model = LogisticRegression()
         high_bias_model.fit(high_bias_states_train[i].T, y_train)
         high_bias_models.append(high_bias_model)
-    # Test the classifier
-    # accuracies = []
-    # r2_scores = []
-    # high_bias_accuracies = []
-    # high_bias_r2_scores = []
-    # states_test = reservoir.run_network(X_test).copy()
-    # for i in tqdm(range(1, states_train.shape[0]), desc="Testing Classifiers"):
-    #     y_pred = models[i - 1].predict(states_test[i].T)
-    #     accuracy = accuracy_score(y_test, y_pred)
-    #     accuracies.append(accuracy)
-    #     r2_model_score = r2_score(y_test, y_pred)
-    #     r2_scores.append(r2_model_score)
-    # Plot the data and decision boundary per model and save into a PDF file
+
     with FiguresPDF("decision_boundaries.pdf") as pdf:
         if input_dim == 1:
             args = get_1d_grid_reservoir_states(X_test, reservoir)
