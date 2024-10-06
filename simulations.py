@@ -1,3 +1,5 @@
+import itertools
+
 from tqdm import tqdm
 from utils import FiguresPDF, generate_data, pair_distances
 from reservoir import Activations, Reservoir, train_test_split, plt
@@ -128,7 +130,8 @@ def simulate_categorization():
             plt.close(fig)
 
 
-def check_input_output(zero=False, normalize_network=False, normalize_dist=False):
+def check_input_output(zero=False, normalize_network=False, normalize_dist=False, bias_scale=1, high_bias_scale=5,
+                       connection_scale=1):
     input_dim = 2
     reservoir_size = 200
     activation = Activations.tanh
@@ -136,26 +139,27 @@ def check_input_output(zero=False, normalize_network=False, normalize_dist=False
     spectral_radius = 1.1
     # Generate data
     # X, y = generate_data(n_samples=1000, input_dim=input_dim, mean=mean, var=var, seed=42)
-    reservoir = Reservoir(input_dim, reservoir_size, activation=activation, spectral_radius=spectral_radius, seed=42)
+    reservoir = Reservoir(input_dim, reservoir_size, activation=activation, spectral_radius=spectral_radius,
+                          bias_scaling=bias_scale, connection_scaling=connection_scale, seed=42)
     reservoir_high_bias = Reservoir(input_dim, reservoir_size, activation=activation, spectral_radius=spectral_radius,
-                                    bias_scaling=5, seed=42)
-    reservoir_no_bias = Reservoir(input_dim, reservoir_size, activation=activation, spectral_radius=spectral_radius,
-                                  bias_scaling=0, seed=42)
+                                    connection_scaling=connection_scale, bias_scaling=high_bias_scale, seed=42)
+    # reservoir_no_bias = Reservoir(input_dim, reservoir_size, activation=activation, spectral_radius=spectral_radius,
+    #                               bias_scaling=0, connection_scaling=connection_scale, seed=42)
     input_distances = []
     output_distances = [[] for _ in range(0, n_steps, 10)]
     output_distances_high_bias = [[] for _ in range(0, n_steps, 10)]
-    output_distances_no_bias = [[] for _ in range(0, n_steps, 10)]
+    # output_distances_no_bias = [[] for _ in range(0, n_steps, 10)]
     cp.random.seed(97)
-    for seed in tqdm(cp.random.randint(0, 1000, 50), desc="Seeds"):
+    for seed in cp.random.randint(0, 1000, 30):
         X = cp.random.randn(500, input_dim)
         reservoir.reinitialize(seed.get())
         reservoir_high_bias.reinitialize(seed.get())
-        reservoir_no_bias.reinitialize(seed.get())
+        # reservoir_no_bias.reinitialize(seed.get())
         states_train = reservoir.run_network(X, fill_zeros=zero, normalize=normalize_network, n_steps=n_steps).copy()
         high_bias_states_train = reservoir_high_bias.run_network(X, fill_zeros=zero, normalize=normalize_network,
                                                                  n_steps=n_steps).copy()
-        no_bias_states_train = reservoir_no_bias.run_network(X, fill_zeros=zero, normalize=normalize_network,
-                                                             n_steps=n_steps).copy()
+        # no_bias_states_train = reservoir_no_bias.run_network(X, fill_zeros=zero, normalize=normalize_network,
+        #                                                      n_steps=n_steps).copy()
 
         # Check the distances in the input space and output space
         inp_dist = pair_distances(X)
@@ -165,28 +169,29 @@ def check_input_output(zero=False, normalize_network=False, normalize_dist=False
         for j, i in enumerate(range(0, n_steps, 10)):
             out_dist = pair_distances(states_train[i + 1].T)
             high_bias_out_dist = pair_distances(high_bias_states_train[i + 1].T)
-            no_bias_out_dist = pair_distances(no_bias_states_train[i + 1].T)
+            # no_bias_out_dist = pair_distances(no_bias_states_train[i + 1].T)
             if normalize_dist:
                 out_dist /= out_dist.max()
                 high_bias_out_dist /= high_bias_out_dist.max()
-                no_bias_out_dist /= no_bias_out_dist.max()
+                # no_bias_out_dist /= no_bias_out_dist.max()
             output_distances[j].append(out_dist)
             output_distances_high_bias[j].append(high_bias_out_dist)
-            output_distances_no_bias[j].append(no_bias_out_dist)
+            # output_distances_no_bias[j].append(no_bias_out_dist)
     input_distances = cp.asnumpy(cp.concatenate(input_distances))
     output_distances = [cp.asnumpy(cp.concatenate(dist)) for dist in output_distances]
     output_distances_high_bias = [cp.asnumpy(cp.concatenate(dist)) for dist in output_distances_high_bias]
-    output_distances_no_bias = [cp.asnumpy(cp.concatenate(dist)) for dist in output_distances_no_bias]
-    name = "in-out distance, zero={}, normalize_network={}, normalize_dist={}.pdf".format(zero, normalize_network,
-                                                                                          normalize_dist)
+    # output_distances_no_bias = [cp.asnumpy(cp.concatenate(dist)) for dist in output_distances_no_bias]
+
+    name = "figures/input_output_distances_zero_{}_norm_net_{}_norm_dist_{}_bias_{}_high_bias_{}_connection_{}.pdf".format(
+        zero, normalize_network, normalize_dist, bias_scale, high_bias_scale, connection_scale)
 
     with FiguresPDF(name) as pdf:
-        for j, i in enumerate(tqdm(range(0, n_steps, 10), desc="Timepoints")):
+        for j, i in enumerate(range(0, n_steps, 10)):
             # Plot the distances
             plt.figure()
             plt.scatter(input_distances, output_distances[j], s=1, alpha=0.5, label="Regular")
             plt.scatter(input_distances, output_distances_high_bias[j], s=1, alpha=0.5, label="High bias")
-            plt.scatter(input_distances, output_distances_no_bias[j], s=1, alpha=0.5, label="No bias")
+            # plt.scatter(input_distances, output_distances_no_bias[j], s=1, alpha=0.5, label="No bias")
             # max_lim = max(np.max(input_distances), np.max(output_distances[i]), np.max(output_distances_high_bias[i]))
             # plt.xlim(0, max_lim)
             # plt.ylim(0, max_lim)
@@ -201,9 +206,18 @@ def check_input_output(zero=False, normalize_network=False, normalize_dist=False
 
 if __name__ == '__main__':
     zero_time = [False, True]
-    normalize_network = [False, True]
+    normalize_network = [True]
     normalize_dist = [False, True]
+    bias_scaling = [0.1, 1, 2]
+    high_bias_scaling = [3, 5, 10, 15]
+    connection_scaling = [0.5, 1, 2]
+    n_iters = len(list(itertools.product(zero_time, normalize_network, normalize_dist, bias_scaling, high_bias_scaling, connection_scaling)))
+    rng = tqdm(range(n_iters), desc="Simulations")
     for zero in zero_time:
         for norm_net in normalize_network:
             for norm_dist in normalize_dist:
-                check_input_output(zero, norm_net, norm_dist)
+                for bs in bias_scaling:
+                    for hbs in high_bias_scaling:
+                        for cs in connection_scaling:
+                            check_input_output(zero, norm_net, norm_dist, bs, hbs, cs)
+                            rng.update(1)
