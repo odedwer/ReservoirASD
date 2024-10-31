@@ -1,3 +1,10 @@
+import os
+
+import scipy
+ASD_COLOR = '#FF0000'
+MID_COLOR='#805045'
+NT_COLOR = '#00A08A'
+os.environ['CUDA_PATH'] = r'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6'
 import itertools
 
 from tqdm import tqdm
@@ -8,6 +15,10 @@ import numpy as np
 from sklearn.metrics import accuracy_score, r2_score, pairwise_distances
 from sklearn.linear_model import Ridge, LogisticRegression
 
+plt.rcParams['axes.labelsize'] = 12
+plt.rcParams['axes.labelweight'] = 'bold'
+plt.rcParams['axes.titlesize'] = 14
+plt.rcParams['axes.titleweight'] = 'bold'
 
 def get_2d_grid_reservoir_states(X, reservoir, step=0.1):
     x0_min, x0_max = X[:, 0].min() - 3, X[:, 0].max() + 3
@@ -135,83 +146,100 @@ def check_input_output(zero=False, normalize_network=False, normalize_dist=False
     input_dim = 2
     reservoir_size = 200
     activation = Activations.tanh
-    n_steps = 100
-    spectral_radius = 1.1
+    n_steps = 3
+    spectral_radius = 0.9
     # Generate data
     # X, y = generate_data(n_samples=1000, input_dim=input_dim, mean=mean, var=var, seed=42)
     reservoir = Reservoir(input_dim, reservoir_size, activation=activation, spectral_radius=spectral_radius,
                           bias_scaling=bias_scale, connection_scaling=connection_scale, seed=42)
     reservoir_high_bias = Reservoir(input_dim, reservoir_size, activation=activation, spectral_radius=spectral_radius,
                                     connection_scaling=connection_scale, bias_scaling=high_bias_scale, seed=42)
-    # reservoir_no_bias = Reservoir(input_dim, reservoir_size, activation=activation, spectral_radius=spectral_radius,
-    #                               bias_scaling=0, connection_scaling=connection_scale, seed=42)
+    reservoir_mid_bias = Reservoir(input_dim, reservoir_size, activation=activation, spectral_radius=spectral_radius,
+                                  bias_scaling=round((4*bias_scale + high_bias_scale) / 5, 2),
+                                  connection_scaling=connection_scale, seed=42)
     input_distances = []
-    output_distances = [[] for _ in range(0, n_steps, 10)]
-    output_distances_high_bias = [[] for _ in range(0, n_steps, 10)]
-    # output_distances_no_bias = [[] for _ in range(0, n_steps, 10)]
+    output_distances = [[] for _ in range(0, n_steps)]
+    output_distances_high_bias = [[] for _ in range(0, n_steps)]
+    output_distances_no_bias = [[] for _ in range(0, n_steps)]
     cp.random.seed(97)
     for seed in cp.random.randint(0, 1000, 30):
         X = cp.random.randn(500, input_dim)
-        reservoir.reinitialize(seed.get())
-        reservoir_high_bias.reinitialize(seed.get())
-        # reservoir_no_bias.reinitialize(seed.get())
+        try:
+            reservoir.reinitialize(seed.get())
+            reservoir_high_bias.reinitialize(seed.get())
+            reservoir_mid_bias.reinitialize(seed.get())
+        except:
+            reservoir.reinitialize(seed)
+            reservoir_high_bias.reinitialize(seed)
+        reservoir_mid_bias.reinitialize(seed.get())
         states_train = reservoir.run_network(X, fill_zeros=zero, normalize=normalize_network, n_steps=n_steps).copy()
         high_bias_states_train = reservoir_high_bias.run_network(X, fill_zeros=zero, normalize=normalize_network,
                                                                  n_steps=n_steps).copy()
-        # no_bias_states_train = reservoir_no_bias.run_network(X, fill_zeros=zero, normalize=normalize_network,
-        #                                                      n_steps=n_steps).copy()
+        no_bias_states_train = reservoir_mid_bias.run_network(X, fill_zeros=zero, normalize=normalize_network,
+                                                             n_steps=n_steps).copy()
 
         # Check the distances in the input space and output space
         inp_dist = pair_distances(X)
         if normalize_dist:
             inp_dist /= inp_dist.max()
         input_distances.append(inp_dist)
-        for j, i in enumerate(range(0, n_steps, 10)):
+        for j, i in enumerate(range(0, n_steps)):
             out_dist = pair_distances(states_train[i + 1].T)
             high_bias_out_dist = pair_distances(high_bias_states_train[i + 1].T)
-            # no_bias_out_dist = pair_distances(no_bias_states_train[i + 1].T)
+            no_bias_out_dist = pair_distances(no_bias_states_train[i + 1].T)
             if normalize_dist:
                 out_dist /= out_dist.max()
                 high_bias_out_dist /= high_bias_out_dist.max()
-                # no_bias_out_dist /= no_bias_out_dist.max()
+                no_bias_out_dist /= no_bias_out_dist.max()
             output_distances[j].append(out_dist)
             output_distances_high_bias[j].append(high_bias_out_dist)
-            # output_distances_no_bias[j].append(no_bias_out_dist)
-    input_distances = cp.asnumpy(cp.concatenate(input_distances))
-    output_distances = [cp.asnumpy(cp.concatenate(dist)) for dist in output_distances]
-    output_distances_high_bias = [cp.asnumpy(cp.concatenate(dist)) for dist in output_distances_high_bias]
-    # output_distances_no_bias = [cp.asnumpy(cp.concatenate(dist)) for dist in output_distances_no_bias]
+            output_distances_no_bias[j].append(no_bias_out_dist)
+    try:
+        input_distances = cp.asnumpy(cp.concatenate(input_distances))
+        output_distances = [cp.asnumpy(cp.concatenate(dist)) for dist in output_distances]
+        output_distances_high_bias = [cp.asnumpy(cp.concatenate(dist)) for dist in output_distances_high_bias]
+        output_distances_no_bias = [cp.asnumpy(cp.concatenate(dist)) for dist in output_distances_no_bias]
+    except:
+        input_distances = cp.concatenate(input_distances)
+        output_distances = [cp.concatenate(dist) for dist in output_distances]
+        output_distances_high_bias = [cp.concatenate(dist) for dist in output_distances_high_bias]
+        output_distances_no_bias = [cp.concatenate(dist) for dist in output_distances_no_bias]
 
     name = "figures/input_output_distances_zero_{}_norm_net_{}_norm_dist_{}_bias_{}_high_bias_{}_connection_{}.pdf".format(
         zero, normalize_network, normalize_dist, bias_scale, high_bias_scale, connection_scale)
 
     with FiguresPDF(name) as pdf:
-        for j, i in enumerate(range(0, n_steps, 10)):
+        for j, i in enumerate((range(0, n_steps))):
             # Plot the distances
             plt.figure()
-            plt.scatter(input_distances, output_distances[j], s=1, alpha=0.5, label="Regular")
-            plt.scatter(input_distances, output_distances_high_bias[j], s=1, alpha=0.5, label="High bias")
-            # plt.scatter(input_distances, output_distances_no_bias[j], s=1, alpha=0.5, label="No bias")
+            plt.scatter(input_distances, output_distances[j], s=1, alpha=0.5, label="Low variance", color = NT_COLOR)
+            plt.scatter(input_distances, output_distances_no_bias[j], s=1, alpha=0.5, label="Intermediate variance", color = MID_COLOR)
+            plt.scatter(input_distances, output_distances_high_bias[j], s=1, alpha=0.5, label="High variance", color = ASD_COLOR)
             # max_lim = max(np.max(input_distances), np.max(output_distances[i]), np.max(output_distances_high_bias[i]))
             # plt.xlim(0, max_lim)
             # plt.ylim(0, max_lim)
             plt.legend()
             plt.xlabel('Input Space Distances')
             plt.ylabel('Output Space Distances')
+            if j==0:
+                plt.savefig("figures/t0_input_output_distances_zero_{}_norm_net_{}_norm_dist_{}_bias_{}_high_bias_{}_connection_{}.pdf".format(
+                    zero, normalize_network, normalize_dist, bias_scale, high_bias_scale, connection_scale))
             plt.title('Input vs Output Space Distances at timepoint {}'.format(i))
             fig = plt.gcf()
             pdf.add_figure(fig)
+
             plt.close(fig)
 
 
 if __name__ == '__main__':
-    zero_time = [False, True]
+    zero_time = [False]
     normalize_network = [True]
-    normalize_dist = [False, True]
-    bias_scaling = [0.1, 1, 2]
-    high_bias_scaling = [3, 5, 10, 15]
-    connection_scaling = [0.5, 1, 2]
-    n_iters = len(list(itertools.product(zero_time, normalize_network, normalize_dist, bias_scaling, high_bias_scaling, connection_scaling)))
+    normalize_dist = [False]
+    bias_scaling = [0.1, 1]
+    high_bias_scaling = [5, 10]
+    connection_scaling = [0.5, 2]
+    n_iters = len(list(itertools.product(zero_time, normalize_network, normalize_dist, bias_scaling, high_bias_scaling,
+                                         connection_scaling)))
     rng = tqdm(range(n_iters), desc="Simulations")
     for zero in zero_time:
         for norm_net in normalize_network:

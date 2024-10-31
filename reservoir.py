@@ -2,6 +2,7 @@ import functools
 
 import cupy as np
 import matplotlib.pyplot as plt
+import scipy
 from sklearn.linear_model import Ridge
 from tqdm import tqdm
 from sklearn.model_selection import train_test_split
@@ -54,7 +55,7 @@ class Activations:
 
 class Reservoir:
     def __init__(self, input_dim, reservoir_size, leak_rate=0.5, input_scaling=1, bias_scaling=1,
-                 connection_scaling=1, activation=Activations.tanh, spectral_radius=1.25, seed=None):
+                 connection_scaling=1, activation=Activations.tanh, spectral_radius=1.25, seed=None, sparsity=0.2):
         self.input_dim = input_dim
         self.reservoir_size = reservoir_size
         self.leak_rate = leak_rate
@@ -63,6 +64,7 @@ class Reservoir:
         self.connection_scaling = connection_scaling
         self.spectral_radius = spectral_radius
         self.activation = activation
+        self.sparsity = sparsity
         self.states = None
         self.W_in = None
         self.W_bias = None
@@ -73,10 +75,13 @@ class Reservoir:
     def reinitialize(self, seed=None):
         if seed is not None:
             np.random.seed(seed)
-        self.W_in = np.random.normal(0, self.input_scaling, (self.reservoir_size, self.input_dim))
-        self.W = np.random.normal(0, self.connection_scaling, (self.reservoir_size, self.reservoir_size))
+        self.W_in = np.random.uniform(-self.input_scaling, self.input_scaling, (self.reservoir_size, self.input_dim))
+        self.W = np.random.uniform(-self.connection_scaling, self.connection_scaling, (self.reservoir_size, self.reservoir_size))
+
+        mask = np.random.rand(self.reservoir_size, self.reservoir_size) < scipy.stats.norm().ppf(1-self.sparsity)
+        self.W[mask] = 0
         self.W *= self.spectral_radius / max(abs(np.linalg.eigvalsh(self.W)))
-        self.W_bias = np.random.normal(0, self.bias_scaling, (self.reservoir_size,))
+        self.W_bias = np.random.uniform(-self.bias_scaling, self.bias_scaling, (self.reservoir_size,))
         self.states = None
 
     def run_network(self, X, n_steps=15, fill_zeros=False, normalize=False):
@@ -94,6 +99,8 @@ class Reservoir:
                 X = to_add
             else:
                 X = np.repeat(X[None, :, :], n_steps, axis=0)
+                # add small noise to X
+                X += np.random.normal(0, 1e-3, X.shape)
         else:
             n_steps = X.shape[0]
         n_examples = X.shape[1]
